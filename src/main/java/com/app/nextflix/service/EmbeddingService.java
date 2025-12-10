@@ -30,9 +30,30 @@ public class EmbeddingService {
     }
 
     private String buildMovieText(Movie movie) {
-        return String.join(" ",
-                "Title: " + movie.getTitle(),
-                "Genres: " + (movie.getGenres() != null ? movie.getGenres() : ""),
-                "Overview: " + (movie.getOverview() != null ? movie.getOverview() : ""));
+        StringBuilder text = new StringBuilder();
+
+        text.append("Title: ").append(movie.getTitle()).append("\n");
+
+        if (movie.getReleaseDate() != null) {
+            text.append("Release Date: ").append(movie.getReleaseDate()).append("\n");
+        }
+
+        if (movie.getGenres() != null && !movie.getGenres().isEmpty()) {
+            text.append("Genres: ").append(movie.getGenres()).append("\n");
+        }
+
+        if (movie.getRating() != null) {
+            text.append("Rating: ").append(String.format("%.1f/10", movie.getRating())).append("\n");
+        }
+
+        if (movie.getPopularity() != null) {
+            text.append("Popularity: ").append(String.format("%.1f", movie.getPopularity())).append("\n");
+        }
+
+        if (movie.getOverview() != null && !movie.getOverview().isEmpty()) {
+            text.append("Overview: ").append(movie.getOverview()).append("\n");
+        }
+
+        return text.toString();
     }
 }

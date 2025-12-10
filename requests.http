@@ -1,0 +1,43 @@
+### NextWatch API - Sample Requests
+
+## Test Health Check
+GET http://localhost:8080/api/recommendations/health
+
+### Seed Popular Movies (One-Time Setup - ~2-3 minutes for 500 movies)
+POST http://localhost:8080/api/seeder/seed-popular-movies
+
+### Test Recommendation Request (after seeding completes)
+POST http://localhost:8080/api/recommendations
+Content-Type: application/json
+
+{
+  "selectedMovies": ["Inception", "Interstellar", "The Matrix"],
+  "maxRecommendations": 5
+}
+
+### Test with Different Movies
+POST http://localhost:8080/api/recommendations
+Content-Type: application/json
+
+{
+  "selectedMovies": ["The Shawshank Redemption", "The Godfather", "Pulp Fiction"],
+  "maxRecommendations": 3
+}
+
+### Test with Sci-Fi Movies
+POST http://localhost:8080/api/recommendations
+Content-Type: application/json
+
+{
+  "selectedMovies": ["Blade Runner", "Arrival", "Ex Machina"],
+  "maxRecommendations": 5
+}
+
+### Test with Drama Movies
+POST http://localhost:8080/api/recommendations
+Content-Type: application/json
+
+{
+  "selectedMovies": ["Iron Man", "Captain America", "Avengers"],
+  "maxRecommendations": 4
+}

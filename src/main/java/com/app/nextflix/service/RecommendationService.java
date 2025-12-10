@@ -1,6 +1,5 @@
 package com.app.nextflix.service;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.app.nextflix.model.*;
 import com.app.nextflix.model.tmdb.TMDbMovieDetails;
 import com.app.nextflix.monitoring.RecommendationMetrics;
@@ -24,7 +23,6 @@ public class RecommendationService {
     private final VectorSearchService vectorSearchService;
     private final MovieRepository movieRepository;
     private final ChatClient chatClient;
-    private final ObjectMapper objectMapper;
     private final RecommendationMetrics metrics;
 
     @Value("${tmdb.api.image-base-url}")
@@ -167,21 +165,23 @@ public class RecommendationService {
 
             String prompt = buildRefinementPrompt(userMovies, topCandidates);
 
-            log.debug("Sending refinement prompt to LLM");
+            log.debug("Sending refinement prompt to LLM with structured response");
             long llmStart = System.currentTimeMillis();
 
-            String response = chatClient.prompt()
+            // Use .entity() for structured response parsing
+            LLMRecommendationResponse llmResponse = chatClient.prompt()
                     .user(prompt)
                     .call()
-                    .content();
+                    .entity(LLMRecommendationResponse.class);
 
             long llmLatency = System.currentTimeMillis() - llmStart;
 
             // Record LLM metrics
-            int estimatedTokens = (prompt.length() + response.length()) / 4;
-            metrics.recordLLMGeneration(prompt, response, estimatedTokens, llmLatency);
+            String responseText = llmResponse.toString();
+            int estimatedTokens = (prompt.length() + responseText.length()) / 4;
+            metrics.recordLLMGeneration(prompt, responseText, estimatedTokens, llmLatency);
 
-            return parseRecommendationsWithExplanations(response, topCandidates);
+            return parseRecommendationsWithExplanations(llmResponse, topCandidates);
         } catch (Exception e) {
             log.error("LLM refinement failed, falling back to vector search results: {}", e.getMessage());
             // Fallback: return top candidates with generic explanation
@@ -223,32 +223,45 @@ public class RecommendationService {
                             : ""));
         }
 
-        prompt.append(String.format("""
-                Return ONLY a JSON array with explanations for each movie in order:
-                [
-                  {"title": "Movie 1 Title", "whyRecommended": "Explanation"},
-                  {"title": "Movie 2 Title", "whyRecommended": "Explanation"}
-                ]
+        prompt.append("""
+                Return a JSON response with recommendations array:
+                {
+                  "recommendations": [
+                    {"title": "Movie 1 Title", "whyRecommended": "Explanation"},
+                    {"title": "Movie 2 Title", "whyRecommended": "Explanation"}
+                  ]
+                }
 
-                NO OTHER TEXT. Just the JSON array.
-                """));
+                IMPORTANT: Return ONLY the JSON object with no other text.
+                """);
 
         return prompt.toString();
     }
 
-    private List<RecommendedMovie> parseRecommendationsWithExplanations(String llmResponse, List<Movie> candidates) {
+    private List<RecommendedMovie> parseRecommendationsWithExplanations(LLMRecommendationResponse llmResponse,
+            List<Movie> candidates) {
         try {
-            String json = extractJson(llmResponse);
-
-            @SuppressWarnings("unchecked")
-            List<java.util.Map<String, String>> parsed = objectMapper.readValue(json, List.class);
-
             List<RecommendedMovie> recommendations = new ArrayList<>();
 
-            for (int i = 0; i < Math.min(parsed.size(), candidates.size()); i++) {
-                java.util.Map<String, String> item = parsed.get(i);
+            if (llmResponse.getRecommendations() == null || llmResponse.getRecommendations().isEmpty()) {
+                log.warn("LLM returned empty recommendations, falling back to generic explanations");
+                return candidates.stream()
+                        .map(movie -> RecommendedMovie.builder()
+                                .title(movie.getTitle())
+                                .overview(movie.getOverview())
+                                .genres(movie.getGenres())
+                                .rating(movie.getRating())
+                                .posterUrl(movie.getFullPosterUrl(imageBaseUrl))
+                                .trailerUrl(movie.getYoutubeEmbedUrl())
+                                .whyRecommended("Recommended based on similarity to your taste")
+                                .build())
+                        .collect(Collectors.toList());
+            }
+
+            for (int i = 0; i < Math.min(llmResponse.getRecommendations().size(), candidates.size()); i++) {
+                LLMRecommendationResponse.RecommendationExplanation item = llmResponse.getRecommendations().get(i);
                 Movie movie = candidates.get(i);
-                String explanation = item.get("whyRecommended");
+                String explanation = item.getWhyRecommended();
 
                 if (explanation == null || explanation.isEmpty()) {
                     explanation = "Matches your taste based on similarity analysis";
@@ -268,7 +281,7 @@ public class RecommendationService {
             return recommendations;
 
         } catch (Exception e) {
-            log.error("Failed to parse LLM response: {}", llmResponse, e);
+            log.error("Failed to parse LLM structured response, using fallback: {}", e.getMessage());
             // Return candidates with generic explanation
             return candidates.stream()
                     .map(movie -> RecommendedMovie.builder()
@@ -282,19 +295,5 @@ public class RecommendationService {
                             .build())
                     .collect(Collectors.toList());
         }
-    }
-
-    /**
-     * Extract JSON array from potentially messy LLM response
-     */
-    private String extractJson(String response) {
-        int start = response.indexOf('[');
-        int end = response.lastIndexOf(']') + 1;
-
-        if (start >= 0 && end > start) {
-            return response.substring(start, end);
-        }
-
-        return response;
     }
 }

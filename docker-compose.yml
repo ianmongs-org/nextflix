@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.9'
 
 services:
   db:
@@ -7,9 +7,9 @@ services:
       dockerfile: Dockerfile.db
     container_name: nextflix-db
     environment:
+      POSTGRES_DB: nextflix
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: nextflix
     ports:
       - "5434:5432"
     volumes:
@@ -20,6 +20,47 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - nextflix-network
+
+  # # Jaeger for OpenTelemetry trace visualization
+  # jaeger:
+  #   image: jaegertracing/all-in-one:latest
+  #   container_name: nextflix-jaeger
+  #   ports:
+  #     - "16686:16686"
+  #     - "4317:4317"
+  #   environment:
+  #     COLLECTOR_OTLP_ENABLED: "true"
+  #   networks:
+  #     - nextflix-network
+
+  # Nextflix Spring Boot application
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nextflix-app
+    depends_on:
+      db:
+        condition: service_healthy
+      jaeger:
+        condition: service_started
+    ports:
+      - "8080:8080"
+    networks:
+      - nextflix-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/recommendations/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
 volumes:
   postgres_data:
+    driver: local
+
+networks:
+  nextflix-network:
+    driver: bridge

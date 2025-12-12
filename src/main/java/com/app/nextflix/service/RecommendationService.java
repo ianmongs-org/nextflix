@@ -24,6 +24,7 @@ public class RecommendationService {
     private final MovieRepository movieRepository;
     private final ChatClient chatClient;
     private final RecommendationMetrics metrics;
+    private final RecommendationQualityService qualityService;
 
     @Value("${tmdb.api.image-base-url}")
     private String imageBaseUrl;
@@ -75,15 +76,19 @@ public class RecommendationService {
             List<RecommendedMovie> recommendations = curateWithAI(userMovies, candidateMovies,
                     request.getMaxRecommendations());
 
+            // Step 4: Improve recommendation quality (diversity, rating balance, etc.)
+            List<RecommendedMovie> qualityRecommendations = qualityService.improveQuality(
+                    recommendations, userMovies);
+
             long totalLatency = System.currentTimeMillis() - startTime;
 
             log.info("Recommendation generation completed - Candidates: {}, Recommendations: {}, Latency: {}ms",
-                    candidateMovies.size(), recommendations.size(), totalLatency);
+                    candidateMovies.size(), qualityRecommendations.size(), totalLatency);
 
-            metrics.recordSuccess(context, recommendations.size());
+            metrics.recordSuccess(context, qualityRecommendations.size());
 
             return MovieRecommendationResponse.builder()
-                    .recommendations(recommendations)
+                    .recommendations(qualityRecommendations)
                     .reasoning("Based on your taste in " + userMovies.stream()
                             .map(Movie::getTitle)
                             .collect(Collectors.joining(", ")))

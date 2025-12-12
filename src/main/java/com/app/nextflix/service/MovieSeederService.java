@@ -21,8 +21,8 @@ public class MovieSeederService {
     private final EmbeddingService embeddingService;
     private final MovieRepository movieRepository;
 
-    private static final int MAX_MOVIES = 500;
-    private static final int PAGES_TO_FETCH = 25;
+    private static final int DEFAULT_MAX_MOVIES = 2000;
+    private static final int PAGES_TO_FETCH = 100; // Enough pages to get 2000 movies
     private static final double MIN_RATING = 6.0;
     private static final int API_FETCH_THREADS = 10;
     private static final int EMBEDDING_THREADS = 5;
@@ -36,6 +36,10 @@ public class MovieSeederService {
     }
 
     public void seedPopularMovies() {
+        seedPopularMovies(DEFAULT_MAX_MOVIES);
+    }
+
+    public void seedPopularMovies(int maxMovies) {
         if (isSeeding) {
             log.warn("Seeding already in progress");
             return;
@@ -43,14 +47,14 @@ public class MovieSeederService {
 
         isSeeding = true;
         try {
-            executeSeedingProcess();
+            executeSeedingProcess(maxMovies);
         } finally {
             isSeeding = false;
         }
     }
 
-    private void executeSeedingProcess() {
-        log.info("Starting movie seeding process. Target: {} movies", MAX_MOVIES);
+    private void executeSeedingProcess(int maxMovies) {
+        log.info("Starting movie seeding process. Target: {} movies", maxMovies);
 
         long startTime = System.currentTimeMillis();
         int totalFetched = 0;
@@ -65,8 +69,8 @@ public class MovieSeederService {
 
         try {
             for (int page = 1; page <= PAGES_TO_FETCH; page++) {
-                if (totalFetched >= MAX_MOVIES) {
-                    log.info("Reached target of {} movies", MAX_MOVIES);
+                if (totalFetched >= maxMovies) {
+                    log.info("Reached target of {} movies", maxMovies);
                     break;
                 }
 
@@ -120,7 +124,7 @@ public class MovieSeederService {
                     }
 
                     if (totalFetched % 100 == 0) {
-                        log.info("Progress: {}/{} movies processed (queued for embedding)", totalFetched, MAX_MOVIES);
+                        log.info("Progress: {}/{} movies processed (queued for embedding)", totalFetched, maxMovies);
                     }
 
                     try {
